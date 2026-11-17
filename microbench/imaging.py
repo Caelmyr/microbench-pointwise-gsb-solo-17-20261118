@@ -81,6 +81,31 @@ def settings(value):
             'fill_holes': bool(value.get('fill_holes', True))}
 
 
+def roi_edge(valid):
+    boundary = valid & ~cv2.erode(valid.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
+    boundary[[0, -1], :] |= valid[[0, -1], :]
+    boundary[:, [0, -1]] |= valid[:, [0, -1]]
+    return boundary
+
+
+def measure_object(field, local, x, y, oid, touches):
+    contours, _ = cv2.findContours(local.astype(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+    perimeter = sum(cv2.arcLength(c, True) for c in contours)
+    ys, xs = np.nonzero(local)
+    area = int(local.sum())
+    cov = np.cov(np.vstack([xs, ys]), bias=True) if len(xs) > 1 else np.zeros((2, 2))
+    eig = np.maximum(np.linalg.eigvalsh(cov), 0)
+    major, minor = (4 * np.sqrt(eig[::-1])).tolist()
+    values = field[y:y + local.shape[0], x:x + local.shape[1]][local]
+    return {'id': oid, 'area_px': area, 'cx': float(xs.mean() + x), 'cy': float(ys.mean() + y),
+            'bbox': [x, y, int(local.shape[1]), int(local.shape[0])], 'perimeter_px': float(perimeter),
+            'equivalent_diameter_px': float(np.sqrt(4 * area / np.pi)),
+            'major_px': major, 'minor_px': minor,
+            'circularity': float(min(1, 4 * np.pi * area / perimeter ** 2)) if perimeter else 0,
+            'mean_intensity': float(values.mean()), 'std_intensity': float(values.std()),
+            'integrated_intensity': float(values.sum()), 'touches_boundary': touches}
+
+
 def segment(image, configuration, polygon):
     config = settings(configuration)
     field = intensity(image)
@@ -117,34 +142,18 @@ def segment(image, configuration, polygon):
     count, labels, stats, centers = cv2.connectedComponentsWithStats((bw > 0).astype(np.uint8), connectivity=8)
     objects = []
     accepted = np.zeros(labels.shape, dtype=np.int32)
-    roi_boundary = valid & ~cv2.erode(valid.astype(np.uint8), np.ones((3, 3), np.uint8)).astype(bool)
-    roi_boundary[[0, -1], :] |= valid[[0, -1], :]
-    roi_boundary[:, [0, -1]] |= valid[:, [0, -1]]
+    boundary = roi_edge(valid)
     for label in range(1, count):
         x, y, width, height, area = [int(v) for v in stats[label]]
         if not config['min_area'] <= area <= config['max_area']:
             continue
         mask = labels[y:y + height, x:x + width] == label
-        touches = bool(np.any(roi_boundary[y:y + height, x:x + width] & mask))
+        touches = bool(np.any(boundary[y:y + height, x:x + width] & mask))
         if config['exclude_border'] and touches:
             continue
-        local = mask.astype(np.uint8)
-        contours, hierarchy = cv2.findContours(local, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
-        perimeter = sum(cv2.arcLength(c, True) for c in contours)
-        ys, xs = np.nonzero(mask)
-        cov = np.cov(np.vstack([xs, ys]), bias=True) if len(xs) > 1 else np.zeros((2, 2))
-        eig = np.maximum(np.linalg.eigvalsh(cov), 0)
-        major, minor = (4 * np.sqrt(eig[::-1])).tolist()
-        values = field[y:y + height, x:x + width][mask]
         oid = len(objects) + 1
         accepted[y:y + height, x:x + width][mask] = oid
-        objects.append({'id': oid, 'area_px': area, 'cx': float(centers[label][0]), 'cy': float(centers[label][1]),
-                        'bbox': [x, y, width, height], 'perimeter_px': float(perimeter),
-                        'equivalent_diameter_px': float(np.sqrt(4 * area / np.pi)),
-                        'major_px': major, 'minor_px': minor,
-                        'circularity': float(min(1, 4 * np.pi * area / perimeter ** 2)) if perimeter else 0,
-                        'mean_intensity': float(values.mean()), 'std_intensity': float(values.std()),
-                        'integrated_intensity': float(values.sum()), 'touches_boundary': touches})
+        objects.append(measure_object(field, mask, x, y, oid, touches))
     return accepted, objects, {'roi_pixels': int(valid.sum()), 'foreground_pixels': int((accepted > 0).sum()),
                                'threshold_mode': config['mode'], 'configuration': config}
 

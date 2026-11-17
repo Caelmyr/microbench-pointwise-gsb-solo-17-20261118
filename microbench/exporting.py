@@ -32,6 +32,8 @@ def output_zip(bench, doc, rid):
         archive.writestr('objects.csv', csv_bytes(object_rows(run)))
         archive.writestr('summary.json', json.dumps(summary(run), ensure_ascii=False))
         archive.writestr('analysis.json', json.dumps(run, ensure_ascii=False))
+        if run.get('split'):
+            archive.writestr('split.json', json.dumps(run['split'], ensure_ascii=False))
     return stream.getvalue()
 
 
@@ -110,6 +112,11 @@ def import_project(store, raw):
                 raise InputError('对象标签与量测行不一致')
             if not set(run['excluded']) <= ids:
                 raise InputError('排除引用无效')
+            split = run.get('split')
+            if split:
+                marked = set(split.get('produced', [])) | {split.get('pending')}
+                if not marked - {None} <= ids:
+                    raise InputError('修整记录引用无效')
         for field in fields:
             if field['active_run'] and field['active_run'] not in run_ids:
                 raise InputError('视野引用了缺失结果')

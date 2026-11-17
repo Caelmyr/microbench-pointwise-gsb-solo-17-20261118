@@ -4,7 +4,7 @@ import json
 from flask import Blueprint, request, jsonify, render_template, send_file
 from .storage import Store, RevisionConflict
 from .service import Bench
-from .imaging import InputError, decode, png, demo_images, quality, finite
+from .imaging import InputError, decode, png, demo_images, quality, finite, read_labels
 from .exporting import output_zip, project_zip, import_project, csv_bytes
 from .measurements import object_rows
 
@@ -101,6 +101,28 @@ def install(app, root):
     @api.post('/bench/projects/<pid>/runs/<rid>/selection')
     def selection(pid, rid):
         return mutate(pid, lambda doc, data: bench.exclude(doc, rid, data.get('excluded', [])))
+
+    @api.get('/bench/projects/<pid>/runs/<rid>/pick')
+    def pick(pid, rid):
+        run = store.run(store.load(pid), rid)
+        labels = read_labels(store.asset(run['labels']))
+        try:
+            x, y = int(float(request.args.get('x', -1))), int(float(request.args.get('y', -1)))
+        except (TypeError, ValueError):
+            raise InputError('坐标格式不正确')
+        if not (0 <= x < labels.shape[1] and 0 <= y < labels.shape[0]):
+            raise InputError('坐标超出图像范围')
+        return jsonify(object_id=int(labels[y, x]))
+
+    @api.post('/bench/projects/<pid>/runs/<rid>/split-preview')
+    def split_preview(pid, rid):
+        data = body()
+        return jsonify(bench.split_preview(pid, data.get('revision'), rid, data))
+
+    @api.post('/bench/projects/<pid>/runs/<rid>/split')
+    def split(pid, rid):
+        data = body()
+        return jsonify(bench.detail(bench.split_confirm(pid, data.get('revision'), rid, data)))
 
     @api.get('/bench/projects/<pid>/source/<fid>.png')
     def source(pid, fid):

@@ -38,6 +38,7 @@ def object_rows(run):
     for obj in run['objects']:
         row = dict(obj)
         row['included'] = obj['id'] not in excluded
+        row['pending'] = bool(obj.get('pending'))
         row['area'] = obj['area_px'] * scale ** 2
         row['perimeter'] = obj['perimeter_px'] * scale
         row['equivalent_diameter'] = obj['equivalent_diameter_px'] * scale
@@ -56,6 +57,7 @@ def summary(run):
     sizes = np.array([r['equivalent_diameter'] for r in rows])
     hist, edges = np.histogram(sizes, bins=min(20, max(1, len(rows)))) if len(rows) else ([], [])
     return {'count': len(rows), 'excluded_count': len(run['excluded']),
+            'pending_count': sum(1 for o in run['objects'] if o.get('pending')),
             'sample_area': area, 'number_density': len(rows) / area if area else None,
             'area_fraction': sum(r['area'] for r in rows) / area if area else None,
             'mean_diameter': float(sizes.mean()) if len(rows) else None,
