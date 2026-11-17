@@ -4,15 +4,20 @@ import json
 from flask import Blueprint, request, jsonify, render_template, send_file
 from .storage import Store, RevisionConflict
 from .service import Bench
+from .tracking_service import TrackingService, tracking_demo_images
 from .imaging import InputError, decode, png, demo_images, quality, finite
 from .exporting import output_zip, project_zip, import_project, csv_bytes
 from .measurements import object_rows
+from .tracking_export import tracking_zip
+from .track_render import render_tracking_frame
 
 
 def install(app, root):
     store = Store(root)
     bench = Bench(store)
+    tracker = TrackingService(store)
     app.extensions['microbench'] = bench
+    app.extensions['microbench_tracking'] = tracker
     api = Blueprint('microbench', __name__)
 
     def body():
@@ -60,6 +65,24 @@ def install(app, root):
             for index, image in enumerate(demo_images()):
                 store.add_image(current, image, '合成视野 ' + str(index + 1), index * 2.5)
         doc = store.mutate(doc['id'], doc['revision'], fill)
+        return jsonify(bench.detail(doc))
+
+    @api.post('/bench/tracking-demo')
+    def tracking_demo():
+        doc = store.create('时序颗粒追踪演示')
+        def fill(current):
+            for index, image in enumerate(tracking_demo_images()):
+                store.add_image(current, image, '追踪视野 t%d' % index, float(index))
+        doc = store.mutate(doc['id'], doc['revision'], fill)
+        # 对每帧发布分析结果，再用固定结果建立追踪会话
+        for field in doc['fields']:
+            doc = bench.analyze(doc['id'], doc['revision'], field['id'])
+        run_ids = [store.field(doc, f['id'])['active_run'] for f in
+                   sorted(doc['fields'], key=lambda f: f['timestamp'])]
+        def build(current):
+            tracker.create(current, {'name': '演示追踪', 'run_ids': run_ids,
+                                     'params': {'max_gap': 1, 'gate_diameters': 2.5, 'area_ratio': 4}})
+        doc = store.mutate(doc['id'], doc['revision'], build)
         return jsonify(bench.detail(doc))
 
     @api.get('/bench/projects/<pid>')
@@ -152,5 +175,61 @@ def install(app, root):
         if upload is None:
             raise InputError('请选择工程ZIP')
         return jsonify(bench.detail(import_project(store, upload.read())))
+
+    @api.post('/bench/projects/<pid>/trackings')
+    def tracking_create(pid):
+        def build(doc, data):
+            return tracker.create(doc, data)
+        return mutate_tracking(pid, build)
+
+    @api.get('/bench/projects/<pid>/trackings/<tid>')
+    def tracking_detail(pid, tid):
+        with store.lock:
+            return jsonify(tracker.detail(store.load(pid), tid))
+
+    @api.post('/bench/projects/<pid>/trackings/<tid>/links')
+    def tracking_links(pid, tid):
+        def edit(doc, data):
+            return tracker.edit_link(doc, tid, data)
+        return mutate_tracking(pid, edit)
+
+    @api.post('/bench/projects/<pid>/trackings/<tid>/rename')
+    def tracking_rename(pid, tid):
+        def edit(doc, data):
+            return tracker.rename(doc, tid, data.get('name'))
+        return mutate_tracking(pid, edit)
+
+    @api.get('/bench/projects/<pid>/trackings/<tid>/frame/<int:index>.png')
+    def tracking_frame(pid, tid, index):
+        with store.lock:
+            derived = tracker.detail(store.load(pid), tid)
+        if not 0 <= index < len(derived['frames']):
+            raise InputError('帧序号超出范围')
+        selected = request.args.get('selected') or None
+        show_rejected = request.args.get('rejected') == '1'
+        with store.lock:
+            image = render_tracking_frame(store, derived, index, selected, show_rejected)
+        return send_file(io.BytesIO(png(image)), mimetype='image/png')
+
+    @api.get('/bench/projects/<pid>/trackings/<tid>/tracking.zip')
+    def tracking_download(pid, tid):
+        with store.lock:
+            doc = store.load(pid)
+            session = store.tracking(doc, tid)
+            derived = tracker.detail(doc, tid)
+            raw = tracking_zip(store, session, derived)
+        return send_file(io.BytesIO(raw), mimetype='application/zip', as_attachment=True,
+                         download_name='microbench-tracking.zip')
+
+    def mutate_tracking(pid, callback):
+        data = body()
+        with store.lock:
+            doc = store.load(pid)
+            if data.get('revision') != doc['revision']:
+                raise RevisionConflict('工程已变化，请重新载入后操作')
+            derived = callback(doc, data)
+            doc['revision'] += 1
+            store.write(doc)
+        return jsonify(derived)
 
     app.register_blueprint(api)

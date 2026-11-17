@@ -102,4 +102,12 @@ class Bench:
         for run in result['runs']:
             run['summary'] = summary(run)
             run['rows'] = object_rows(run)
+        from .tracking_service import session_summary
+        result['trackings'] = [session_summary(session) for session in doc.get('trackings', [])]
+        # 会话内帧的过期标记需要当前 active_run
+        for item in result['trackings']:
+            session = next(s for s in doc['trackings'] if s['id'] == item['id'])
+            item['stale_frames'] = sum(
+                1 for frame in session['frames']
+                if self.store.field(doc, frame['field_id'])['active_run'] != frame['run_id'])
         return result

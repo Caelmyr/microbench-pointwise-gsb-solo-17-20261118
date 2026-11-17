@@ -46,7 +46,8 @@ class Store:
     def create(self, name):
         with self.lock:
             doc = {'id': uuid.uuid4().hex, 'name': str(name or '未命名视野')[:120], 'revision': 1,
-                   'created': time.time(), 'fields': [], 'snapshots': [], 'runs': [], 'active_field': None}
+                   'created': time.time(), 'fields': [], 'snapshots': [], 'runs': [],
+                   'trackings': [], 'active_field': None}
             self.write(doc)
             return doc
 
@@ -115,6 +116,12 @@ class Store:
             if run['id'] == rid:
                 return run
         raise InputError('分析结果不存在')
+
+    def tracking(self, doc, tid):
+        for session in doc.get('trackings', []):
+            if session['id'] == tid:
+                return session
+        raise InputError('追踪会话不存在')
 
     def current_run(self, doc, field):
         if not field['active_run']:
