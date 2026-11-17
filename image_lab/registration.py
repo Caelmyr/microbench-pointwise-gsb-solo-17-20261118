@@ -16,16 +16,53 @@ def feature_gray(image):
     return cv2.createCLAHE(2., (8, 8)).apply(raster)
 
 
-def phase_align(reference, moving):
-    a, b = grayscale(reference), grayscale(moving)
-    a = np.log1p(a * 20)
-    b = np.log1p(b * 20)
+def phase_surface(reference, moving):
+    a = np.log1p(grayscale(reference) * 20)
+    b = np.log1p(grayscale(moving) * 20)
     window = cv2.createHanningWindow((a.shape[1], a.shape[0]), cv2.CV_32F)
     shift, response = cv2.phaseCorrelate(a, b, window)
     if not np.isfinite(shift).all():
         raise v.Invalid('相位相关无法估计位移')
+    fa = cv2.dft(a, flags=cv2.DFT_COMPLEX_OUTPUT)
+    fb = cv2.dft(b, flags=cv2.DFT_COMPLEX_OUTPUT)
+    cross = cv2.mulSpectrums(fa, fb, 0, conjB=True)
+    magnitude, angle = cv2.cartToPolar(cross[:, :, 0], cross[:, :, 1])
+    normalized = cv2.merge((np.cos(angle), np.sin(angle)))
+    surface = cv2.idft(normalized, flags=cv2.DFT_SCALE | cv2.DFT_REAL_OUTPUT)
+    h, w = surface.shape
+    return {'shift': shift, 'response': float(response), 'surface': surface, 'width': w, 'height': h}
+
+
+def rival_peaks(surface_data, maximum=3, neighborhood=None):
+    """主峰之外的竞争峰；neighborhood=(cx,cy,radius) 用于屏蔽主峰主瓣。"""
+    surface, w, h = surface_data['surface'], surface_data['width'], surface_data['height']
+    masked = surface.copy()
+    if neighborhood is not None:
+        cx, cy, radius = neighborhood
+        yy, xx = np.ogrid[:h, :w]
+        dx = np.minimum(np.abs(xx - cx), w - np.abs(xx - cx))
+        dy = np.minimum(np.abs(yy - cy), h - np.abs(yy - cy))
+        masked[dx * dx + dy * dy <= radius * radius] = -np.inf
+    order = np.dstack(np.unravel_index(np.argsort(masked.ravel())[::-1], masked.shape))[0]
+    peaks = []
+    for y, x in order:
+        if not np.isfinite(masked[y, x]):
+            continue
+        dx = int(x) if x <= w // 2 else int(x - w)
+        dy = int(y) if y <= h // 2 else int(y - h)
+        if any(abs(dx - item['dx']) <= 3 and abs(dy - item['dy']) <= 3 for item in peaks):
+            continue
+        peaks.append({'dx': dx, 'dy': dy, 'strength': float(surface[y, x])})
+        if len(peaks) >= maximum:
+            break
+    return peaks
+
+
+def phase_align(reference, moving):
+    data = phase_surface(reference, moving)
+    shift = data['shift']
     matrix = np.array([[1, 0, -shift[0]], [0, 1, -shift[1]], [0, 0, 1]], np.float64)
-    return matrix, {'response': float(response), 'shift': list(shift), 'method': 'phase'}
+    return matrix, {'response': data['response'], 'shift': list(shift), 'method': 'phase'}
 
 
 def orb_align(reference, moving, settings):

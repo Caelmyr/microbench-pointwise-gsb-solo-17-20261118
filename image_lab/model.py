@@ -20,7 +20,7 @@ def frame(asset, name, exposure=1):
 
 def project(name):
     now = v.timestamp()
-    return {'schema': 1, 'id': uid(), 'name': name, 'revision': 0, 'created_at': now, 'updated_at': now, 'notes': '', 'tags': [], 'regions': [], 'frames': [], 'reference': None, 'settings': all_settings({}), 'undo': [], 'redo': [], 'current_result': None, 'archived': False}
+    return {'schema': 1, 'id': uid(), 'name': name, 'revision': 0, 'created_at': now, 'updated_at': now, 'notes': '', 'tags': [], 'regions': [], 'frames': [], 'reference': None, 'settings': all_settings({}), 'alignment_network': None, 'undo': [], 'redo': [], 'current_result': None, 'archived': False}
 
 
 def find_frame(project, frame_id):
@@ -80,6 +80,8 @@ def validate(project):
     if project.get('reference') is not None and project['reference'] not in ids:
         raise v.Invalid('参考帧不存在')
     project['settings'] = all_settings(project.get('settings'))
+    from .network import validate_network
+    project['alignment_network'] = validate_network(project.get('alignment_network'))
     if project['settings']['size'] ** 2 * max(len(ids), 1) > 16000000:
         raise v.Invalid('超过1600万帧像素预算，请降低长边或减少照片')
     from .regions import validate_region

@@ -59,6 +59,7 @@ def create_api(services):
     jobs = services['jobs']
     profiles = services['profiles']
     regions = services['regions']
+    alignment_network = services['alignment_network']
 
     def result_fields(key, result_id=None):
         return results.fields(key, result_id, not bool(result_id))
@@ -85,7 +86,7 @@ def create_api(services):
 
     @api.get('/capabilities')
     def capabilities():
-        return jsonify({'modes': [item['key'] for item in public_workflows()], 'workflows': public_workflows(), 'alignment': ['phase', 'orb', 'ecc', 'mtb'], 'limits': {'frames': 24, 'long_edge': 1536, 'frame_pixels': 16000000, 'active_jobs': 5}, 'settings': model.project('defaults')['settings']})
+        return jsonify({'modes': [item['key'] for item in public_workflows()], 'workflows': public_workflows(), 'alignment': ['phase', 'orb', 'ecc', 'mtb'], 'alignment_strategies': ['direct', 'network'], 'limits': {'frames': 24, 'long_edge': 1536, 'frame_pixels': 16000000, 'active_jobs': 5}, 'settings': model.project('defaults')['settings']})
 
     @api.get('/demos')
     def demos():
@@ -215,6 +216,28 @@ def create_api(services):
     def estimate_exposure(key):
         data = body()
         return jsonify(frames.auto_exposure(key, v.revision(data), data.get('mode', 'rank')))
+
+    @api.get('/projects/<key>/alignment-network')
+    def network_report(key):
+        return jsonify(alignment_network.report(key))
+
+    @api.post('/projects/<key>/alignment-network/analyze')
+    def network_analyze(key):
+        data = body()
+        return jsonify(alignment_network.analyze(key, v.revision(data), data)), 201
+
+    @api.post('/projects/<key>/alignment-network/edges/<edge_id>')
+    def network_edge(key, edge_id):
+        data = body()
+        return jsonify(alignment_network.update_edge(key, v.revision(data), edge_id, data))
+
+    @api.post('/projects/<key>/alignment-network/confirm')
+    def network_confirm(key):
+        return jsonify(alignment_network.confirm(key, v.revision(body())))
+
+    @api.post('/projects/<key>/alignment-network/reset')
+    def network_reset(key):
+        return jsonify(alignment_network.reset(key, v.revision(body())))
 
     @api.get('/projects/<key>/exposures')
     def exposures(key):

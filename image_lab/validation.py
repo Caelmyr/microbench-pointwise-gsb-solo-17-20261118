@@ -125,6 +125,7 @@ def alignment_settings(body):
     body = object_value(body, '配准设置')
     return {
         'method': choice(body.get('method', 'phase'), '配准方式', ['phase', 'orb', 'ecc', 'mtb']),
+        'strategy': choice(body.get('strategy', 'direct'), '配准组织方式', ['direct', 'network']),
         'motion': choice(body.get('motion', 'affine'), '运动模型', ['translation', 'euclidean', 'affine', 'homography']),
         'features': integer(body.get('features', 2500), '特征数量', 200, 6000),
         'ratio': number(body.get('ratio', .75), '特征比率', .4, .95),
@@ -132,6 +133,11 @@ def alignment_settings(body):
         'iterations': integer(body.get('iterations', 80), '迭代次数', 10, 300),
         'epsilon': number(body.get('epsilon', .0001), '收敛阈值', .000001, .01),
         'minimum_overlap': number(body.get('minimum_overlap', .2), '最小覆盖率', .05, .95),
+        'network_min_response': number(body.get('network_min_response', .05), '网络最低配准响应', .02, .95),
+        'network_min_correlation': number(body.get('network_min_correlation', .15), '网络最低对齐相关度', .01, .9),
+        'network_min_overlap': number(body.get('network_min_overlap', .1), '网络最低视野重叠', .05, .9),
+        'network_ambiguity_ratio': number(body.get('network_ambiguity_ratio', .5), '歧义峰值比率', .3, .98),
+        'network_conflict_pixels': number(body.get('network_conflict_pixels', 6), '冲突残差像素阈值', 1, 60),
     }
 
 
