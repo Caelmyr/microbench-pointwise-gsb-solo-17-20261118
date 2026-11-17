@@ -1,0 +1,10 @@
+services:
+  microbench:
+    build: .
+    image: solo20-microbench:1.0
+    ports: ["18920:18920"]
+    volumes: ["microbench-data:/data"]
+    restart: unless-stopped
+volumes:
+  microbench-data:
+    name: solo20-microbench-data
