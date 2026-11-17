@@ -35,7 +35,9 @@ class Store:
         path = self.path(pid)
         if not path.exists():
             raise InputError('工程不存在')
-        return json.loads(path.read_text())
+        doc = json.loads(path.read_text())
+        doc.setdefault('pairs', [])
+        return doc
 
     def write(self, doc):
         target = self.path(doc['id'])
@@ -46,7 +48,8 @@ class Store:
     def create(self, name):
         with self.lock:
             doc = {'id': uuid.uuid4().hex, 'name': str(name or '未命名视野')[:120], 'revision': 1,
-                   'created': time.time(), 'fields': [], 'snapshots': [], 'runs': [], 'active_field': None}
+                   'created': time.time(), 'fields': [], 'snapshots': [], 'runs': [], 'pairs': [],
+                   'active_field': None}
             self.write(doc)
             return doc
 
@@ -115,6 +118,12 @@ class Store:
             if run['id'] == rid:
                 return run
         raise InputError('分析结果不存在')
+
+    def pair(self, doc, pair_id):
+        for pair in doc.get('pairs', []):
+            if pair['id'] == pair_id:
+                return pair
+        raise InputError('双通道对照结果不存在')
 
     def current_run(self, doc, field):
         if not field['active_run']:

@@ -1,6 +1,37 @@
 <!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>MicroBench · 显微图像量测</title><link rel="stylesheet" href="/static/bench.css"></head><body>
 <header><b>MicroBench</b><span>显微颗粒观察与量测</span><a href="/prepare">图像准备工具 ↗</a></header>
-<div class="shell"><aside><h2>观察工程</h2><button id="demo">载入合成演示</button><button id="create">新建工程</button><select id="projects"></select><div id="revision"></div><h3>视野图像</h3><div id="fields"></div><label class="button">导入图像<input type="file" id="upload" accept="image/*" multiple hidden></label><label class="button">恢复工程ZIP<input type="file" id="import" accept=".zip" hidden></label><a id="projectDownload">下载可编辑工程</a><h3>命名快照</h3><button id="snapshot">保存当前观察</button><select id="snapshots"></select><button id="restore">恢复所选快照</button><h3>分析历史</h3><select id="history"></select><button id="viewHistory">查看历史结果</button><p class="muted">所有演示均为程序合成。量测为图像近似，需要人工核对；不作诊断用途。</p></aside>
-<main><div class="toolbar"><h1 id="title">选择或创建观察工程</h1><span id="message"></span></div><div class="workspace"><section class="viewer"><div class="tools"><select id="tool"><option value="inspect">点击查看坐标</option><option value="roi">绘制ROI多边形</option><option value="scale">标尺两点</option><option value="profile">强度剖面两点</option><option value="distance">距离标注两点</option><option value="angle">角度标注三点</option><option value="polygon">面积标注多边形</option></select><button id="commitPoints">完成多边形</button><button id="clearPoints">清除草稿点</button><button id="sourceView">原图</button><button id="overlayView">对象叠加</button></div><div class="imagebox"><canvas id="canvas"></canvas></div><div id="coordinates" class="muted"></div><div id="summary" class="cards"></div><div id="profile"></div><div id="annotations"></div></section>
+<div class="shell"><aside><h2>观察工程</h2><button id="demo">载入合成演示</button><button id="pairDemo">载入双通道演示</button><button id="create">新建工程</button><select id="projects"></select><div id="revision"></div><h3>视野图像</h3><div id="fields"></div><label class="button">导入图像<input type="file" id="upload" accept="image/*" multiple hidden></label><label class="button">恢复工程ZIP<input type="file" id="import" accept=".zip" hidden></label><a id="projectDownload">下载可编辑工程</a><h3>命名快照</h3><button id="snapshot">保存当前观察</button><select id="snapshots"></select><button id="restore">恢复所选快照</button><h3>分析历史</h3><select id="history"></select><button id="viewHistory">查看历史结果</button><p class="muted">所有演示均为程序合成。量测为图像近似，需要人工核对；不作诊断用途。</p></aside>
+<main><div class="toolbar"><h1 id="title">选择或创建观察工程</h1><span id="message"></span></div><div class="workspace"><section class="viewer"><div class="tools"><select id="tool"><option value="inspect">点击查看坐标</option><option value="roi">绘制ROI多边形</option><option value="scale">标尺两点</option><option value="profile">强度剖面两点</option><option value="distance">距离标注两点</option><option value="angle">角度标注三点</option><option value="polygon">面积标注多边形</option><option value="pairroi">双通道共同ROI</option></select><button id="commitPoints">完成多边形</button><button id="clearPoints">清除草稿点</button><button id="sourceView">原图</button><button id="overlayView">对象叠加</button></div><div class="imagebox"><canvas id="canvas"></canvas></div><div id="coordinates" class="muted"></div><div id="summary" class="cards"></div><div id="profile"></div><div id="annotations"></div></section>
 <section class="controls"><h3>视野信息</h3><label>名称<input id="fieldName"></label><label>观测时刻（秒）<input id="timestamp" type="number" step="any"></label><button id="saveMeta">保存视野信息</button><h3>物理标定</h3><label>单位<select id="unit"><option>um</option><option>mm</option><option>nm</option><option>px</option></select></label><label>每像素长度<input id="pixelSize" type="number" min="0.000000001" step="any"></label><label>两点标尺真实长度<input id="referenceLength" type="number" value="100" min="0.000001"></label><button id="saveScale">应用直接标定</button><div id="scaleInfo"></div><h3>ROI与分割</h3><button id="clearROI">使用全视野</button><label>方式<select id="mode"><option value="otsu">Otsu自动阈值</option><option value="manual">固定阈值</option><option value="adaptive">局部阈值</option></select></label><label>对象<select id="polarity"><option value="bright">亮对象</option><option value="dark">暗对象</option></select></label><label>固定阈值0–1<input id="threshold" type="number" value="0.4" step="0.01" min="0" max="1"></label><label>平滑半径<input id="blur" type="number" min="0" max="12" value="1"></label><label>开运算半径<input id="opening" type="number" min="0" max="8" value="0"></label><label>闭运算半径<input id="closing" type="number" min="0" max="8" value="0"></label><label>最小面积px²<input id="min_area" type="number" min="1" value="12"></label><label>最大面积px²<input id="max_area" type="number" min="1" value="1000000"></label><label class="check"><input id="exclude_border" type="checkbox" checked>排除触及ROI边缘对象</label><label class="check"><input id="fill_holes" type="checkbox" checked>填补对象内部孔洞</label><button id="analyze" class="primary">应用设置并分析</button><button id="quality">图像质量读数</button><pre id="qualityData"></pre><h3>交付</h3><a id="resultDownload">下载当前结果ZIP</a><a id="csvDownload">下载对象CSV</a><button id="compare">比较已分析视野</button></section></div>
-<section class="results"><h2>对象量测 <small>勾选为纳入统计，修改会保留旧结果</small></h2><button id="saveSelection">保存排除选择</button><div class="tableScroll"><table><thead><tr><th>纳入</th><th>ID</th><th>面积</th><th>等效直径</th><th>圆度</th><th>均值</th><th>中心x/y px</th></tr></thead><tbody id="objects"></tbody></table></div><div id="comparison"></div></section></main></div><script src="/static/bench.js"></script></body></html>
+<section class="results"><h2>对象量测 <small>勾选为纳入统计，修改会保留旧结果</small></h2><button id="saveSelection">保存排除选择</button><div class="tableScroll"><table><thead><tr><th>纳入</th><th>ID</th><th>面积</th><th>等效直径</th><th>圆度</th><th>均值</th><th>中心x/y px</th></tr></thead><tbody id="objects"></tbody></table></div><div id="comparison"></div></section>
+<section class="results pairSection"><h2>双通道共定位与错位对照 <small>只用共同ROI内的可见像素；不做配准</small></h2>
+<div class="pairGrid"><div>
+<h3>1 选择已对齐的同尺寸视野</h3>
+<label>A通道<select id="pairA"></select></label>
+<label>B通道<select id="pairB"></select></label>
+<label class="check"><input id="pairAligned" type="checkbox"> 两幅图已在同一位置对齐（本工具不配准、不缩放）</label>
+<h3>2 共同ROI</h3>
+<button id="pairUseFieldROI">采用A通道视野的ROI</button><button id="pairFullFrame">使用全视野</button>
+<div id="pairROIInfo" class="muted"></div>
+<h3>3 各通道阳性阈值</h3>
+<label>A通道阈值0–1<input id="pairThresholdA" type="number" min="0" max="1" step="0.01" value="0.4"></label>
+<label>B通道阈值0–1<input id="pairThresholdB" type="number" min="0" max="1" step="0.01" value="0.4"></label>
+<h3>4 保留斑点尺度的随机错位</h3>
+<label>最小错位px<input id="pairMinShift" type="number" min="1" max="96" value="8"></label>
+<label>最大错位px<input id="pairMaxShift" type="number" min="1" max="96" value="32"></label>
+<label>对照次数<input id="pairTrials" type="number" min="19" max="999" value="199"></label>
+<label>随机种子<input id="pairSeed" type="number" min="0" step="1" value="20261117"></label>
+<p class="muted">每次对照把B通道整体平移整数像素，只取仍完整落在图像内的位移；不逐像素打散、不环绕越界信号，斑点尺寸与形态保持不变。位移在环形范围内均匀随机抽取。</p>
+<button id="pairPreview" class="primary">运行对照预览</button><button id="pairSave">保存对照结果</button>
+<div id="pairMessage" class="muted"></div>
+<h3>保存的双通道对照</h3><select id="pairHistory"></select><button id="pairLoad">查看所选对照</button><a id="pairDownload">下载对照ZIP</a>
+</div><div>
+<h3>双通道叠加（A绿 / B品红 / 共同ROI边界黄）</h3><div class="pairImage"><img id="pairOverlay" alt="双通道叠加"></div>
+<h3>实际参与对照的区域</h3><div class="pairImage"><img id="pairParticipation" alt="参与对照的区域"></div>
+<p class="muted">青绿色=实际参与对照的可见像素；黄色=实际参与区域的边界；深灰=ROI多边形内但在至少一幅图中透明的像素，已排除。</p>
+<div id="pairMetrics"></div>
+<h3>联合强度散点（ROI像素，两轴0–1）</h3><div id="pairScatter"></div>
+<h3>对照分布与观察值位置</h3><div id="pairDistribution"></div>
+<h3>实际使用的平移</h3><div id="pairShifts"></div>
+<div id="pairWarnings"></div>
+</div></div></section></main></div><script src="/static/bench.js"></script></body></html>

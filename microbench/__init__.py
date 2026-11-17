@@ -1,3 +1,4 @@
+import base64
 import copy
 import io
 import json
@@ -5,8 +6,9 @@ from flask import Blueprint, request, jsonify, render_template, send_file
 from .storage import Store, RevisionConflict
 from .service import Bench
 from .imaging import InputError, decode, png, demo_images, quality, finite
-from .exporting import output_zip, project_zip, import_project, csv_bytes
+from .exporting import output_zip, project_zip, import_project, csv_bytes, pair_zip
 from .measurements import object_rows
+from .pairing import demo_channels, display, PREVIEW_LIMIT
 
 
 def install(app, root):
@@ -101,6 +103,50 @@ def install(app, root):
     @api.post('/bench/projects/<pid>/runs/<rid>/selection')
     def selection(pid, rid):
         return mutate(pid, lambda doc, data: bench.exclude(doc, rid, data.get('excluded', [])))
+
+    @api.post('/bench/pair/demo')
+    def pair_demo():
+        doc = store.create('双通道对照演示')
+        images, polygon = demo_channels()
+        def fill(current):
+            first = store.add_image(current, images[0], '通道A 合成', 0)
+            store.add_image(current, images[1], '通道B 合成', 0)
+            current['demo_pair'] = {'a': first, 'roi': polygon}
+        doc = store.mutate(doc['id'], doc['revision'], fill)
+        return jsonify(bench.detail(doc))
+
+    @api.post('/bench/projects/<pid>/pairs/preview')
+    def pair_preview(pid):
+        spec, result = bench.preview_pair(store.load(pid), body())
+        overlay, participation = result['overlay'], result['participation']
+        payload = {key: value for key, value in result.items() if key not in ('overlay', 'participation')}
+        payload['control'] = {key: value for key, value in result['control'].items() if key != 'values'}
+        return jsonify({'specification': {key: spec[key] for key in ('roi', 'thresholds', 'control')},
+                        'result': payload,
+                        'overlay': base64.b64encode(png(display(overlay))).decode(),
+                        'participation': base64.b64encode(png(display(participation))).decode(),
+                        'preview_scaled': max(overlay.size) > PREVIEW_LIMIT})
+
+    @api.post('/bench/projects/<pid>/pairs')
+    def pair_save(pid):
+        data = body()
+        created = []
+        store.mutate(pid, data.get('revision'), lambda current: created.append(bench.save_pair(current, data)))
+        return jsonify(bench.pair(store.load(pid), created[0]['id'])), 201
+
+    @api.get('/bench/projects/<pid>/pairs/<pair_id>')
+    def pair_detail(pid, pair_id):
+        return jsonify(bench.pair(store.load(pid), pair_id))
+
+    @api.get('/bench/projects/<pid>/pairs/<pair_id>/image/<name>.png')
+    def pair_image(pid, pair_id, name):
+        if name not in ('overlay', 'participation'):
+            raise InputError('对照图像类型无效')
+        return send_file(io.BytesIO(bench.pair_image(store.load(pid), pair_id, name)), mimetype='image/png')
+
+    @api.get('/bench/projects/<pid>/pairs/<pair_id>/export.zip')
+    def pair_export(pid, pair_id):
+        return download(pair_zip(bench, store.load(pid), pair_id), 'microbench-pair.zip', 'application/zip')
 
     @api.get('/bench/projects/<pid>/source/<fid>.png')
     def source(pid, fid):

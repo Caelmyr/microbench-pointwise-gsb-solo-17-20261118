@@ -35,9 +35,27 @@ def output_zip(bench, doc, rid):
     return stream.getvalue()
 
 
+def pair_zip(bench, doc, pair_id):
+    pair = bench.pair(doc, pair_id)
+    shifts = [{'trial': index + 1, 'dx_px': row[0], 'dy_px': row[1], 'valid': bool(row[2])}
+              for index, row in enumerate(pair['control'].get('shifts') or [])]
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, 'w', zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr('pair.json', json.dumps(pair, ensure_ascii=False, allow_nan=False))
+        archive.writestr('source_a.png', bench.store.asset(pair['sources']['a']))
+        archive.writestr('source_b.png', bench.store.asset(pair['sources']['b']))
+        archive.writestr('overlay.png', bench.store.asset(pair['thumbs']['overlay']))
+        archive.writestr('participation.png', bench.store.asset(pair['thumbs']['participation']))
+        archive.writestr('shifts.csv', csv_bytes(shifts))
+    return stream.getvalue()
+
+
 def project_zip(store, doc):
     raw = json.dumps(doc, ensure_ascii=False, allow_nan=False).encode()
     assets = {field['source'] for field in doc['fields']}
+    for pair in doc.get('pairs', []):
+        assets.update(pair['sources'].values())
+        assets.update(pair['thumbs'].values())
     for snapshot in doc['snapshots']:
         assets.update(field['source'] for field in snapshot['fields'])
     for run in doc['runs']:
@@ -68,6 +86,8 @@ def import_project(store, raw):
         if format_doc != {'format': 'microbench-project', 'version': 1}:
             raise InputError('不支持的工程格式')
         doc = json.loads(archive.read('project.json'))
+        if len(doc.get('pairs') or []) > 100:
+            raise InputError('工程对照结果超限')
         if len(doc['fields']) > 32 or len(doc['runs']) > 100 or len(doc['snapshots']) > 30:
             raise InputError('工程对象超限')
         refs = set()
@@ -78,6 +98,9 @@ def import_project(store, raw):
             refs.add(field['source'])
         for run in doc['runs']:
             refs.update((run['source'], run['labels']))
+        for pair in doc.get('pairs') or []:
+            refs.update(pair['sources'].values())
+            refs.update(pair['thumbs'].values())
         expected = {'project.json', 'format.json'} | {'assets/' + key for key in refs}
         if set(names) != expected:
             raise InputError('工程资源清单不一致')
@@ -113,6 +136,11 @@ def import_project(store, raw):
         for field in fields:
             if field['active_run'] and field['active_run'] not in run_ids:
                 raise InputError('视野引用了缺失结果')
+        for pair in doc.get('pairs') or []:
+            for key in pair['sources'].values():
+                image = decode(resources[key])
+                if list(image.size) != pair['size']:
+                    raise InputError('对照源图尺寸与记录不一致')
         with store.lock:
             for key, data in resources.items():
                 store.put(data)

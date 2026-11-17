@@ -1,8 +1,9 @@
 import copy
 import time
 import uuid
-from .imaging import InputError, segment, label_png, read_labels, overlay, settings, roi_mask, finite, line_profile, quality
+from .imaging import InputError, segment, label_png, read_labels, overlay, settings, roi_mask, finite, line_profile, quality, png
 from .measurements import calibration, annotation, object_rows, summary
+from . import pairing
 
 
 class Bench:
@@ -97,9 +98,46 @@ class Bench:
             sample['distance'] = sample['distance_px'] * field['calibration']['pixel_size']
         return {'unit': field['calibration']['unit'], 'samples': samples, 'source': field['source']}
 
+    def preview_pair(self, doc, value):
+        spec, result, _ = self._evaluate_pair(doc, value)
+        return spec, result
+
+    def _evaluate_pair(self, doc, value):
+        fields = value.get('fields') if isinstance(value.get('fields'), dict) else {}
+        field_a = self.store.field(doc, fields.get('a'))
+        field_b = self.store.field(doc, fields.get('b'))
+        spec = pairing.specification(value, field_a, field_b)
+        result = pairing.analyze(self.store.image(field_a['source']), self.store.image(field_b['source']), spec)
+        return spec, result, (field_a, field_b)
+
+    def save_pair(self, doc, value):
+        if len(doc.setdefault('pairs', [])) >= 100:
+            raise InputError('每工程最多100份双通道对照结果')
+        spec, result, (field_a, field_b) = self._evaluate_pair(doc, value)
+        record = pairing.pair_record(spec, result, field_a, field_b)
+        record['thumbs'] = {'overlay': self.store.put(png(result['overlay'])),
+                            'participation': self.store.put(png(result['participation']))}
+        doc['pairs'].append(record)
+        return record
+
+    def pair(self, doc, pair_id):
+        return copy.deepcopy(self.store.pair(doc, pair_id))
+
+    def pair_image(self, doc, pair_id, name):
+        pair = self.store.pair(doc, pair_id)
+        key = pair['thumbs'].get(name)
+        if not key:
+            raise InputError('对照图像不存在')
+        return self.store.asset(key)
+
     def detail(self, doc):
         result = copy.deepcopy(doc)
         for run in result['runs']:
             run['summary'] = summary(run)
             run['rows'] = object_rows(run)
+        result['pairs'] = [{'id': pair['id'], 'created': pair['created'],
+                            'field_a': pair['field_a'], 'field_b': pair['field_b'],
+                            'roi': pair['roi'], 'aligned': pair['aligned'], 'summary': pair['summary'],
+                            'thresholds': pair['thresholds'], 'control_configured': pair['control_configured']}
+                           for pair in result.get('pairs', [])]
         return result
